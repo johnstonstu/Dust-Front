@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bwq08nhavdhva"
-path="res://.godot/imported/snow_normal.png-2c3bb717cd713eaad6f53309bb4ce9c2.ctex"
+uid="uid://rcrktty0vl22"
+path="res://.godot/imported/ember-coast.png-2df7681193bba231925a01cafd059948.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/snow_normal.png"
-dest_files=["res://.godot/imported/snow_normal.png-2c3bb717cd713eaad6f53309bb4ce9c2.ctex"]
+source_file="res://docs/screenshots/ember-coast.png"
+dest_files=["res://.godot/imported/ember-coast.png-2df7681193bba231925a01cafd059948.ctex"]
 
 [params]
 

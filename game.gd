@@ -757,7 +757,8 @@ func update_pickups(delta: float) -> void:
 		p.life -= delta
 		p.node.rotate_y(delta * 2.4)
 		p.node.position.y = ground_height(p.node.position.x, p.node.position.z) + 3.0 + sin(elapsed * 3 + p.phase) * .4
-		if craft.position.distance_to(p.node.position) < 8.0:
+		var flat := Vector2(craft.position.x - p.node.position.x, craft.position.z - p.node.position.z)
+		if flat.length() < 12.0 and absf(craft.position.y - p.node.position.y) < 40.0:
 			if p.kind == "hull":
 				health = minf(profile.max_health(), health + 28)
 				reward_text = "HULL PATCH  /  +28"
@@ -1181,6 +1182,8 @@ func update_hud() -> void:
 		target_marker.text = "[ LOCK ]"
 		for e in enemies:
 			if e.node == target: target_marker.text = "[ %s %d%% ]" % [e.kind.to_upper(),int(e.hp/e.max_hp*100)]
+		for h in hardpoints:
+			if h.node == target: target_marker.text = "[ HARDPOINT %d%% ]" % int(h.hp/h.max_hp*100)
 		target_marker.position = camera.unproject_position(target.position)-Vector2(60,30)
 	radar.queue_redraw()
 	for label in [hud,status,crosshair,target_marker,radio_label,objective_label,help_label]: label.hide()
@@ -1248,16 +1251,20 @@ func run_smoke_test() -> void:
 	profile.secondary = 1
 	start_game()
 	assert(health == 125 and primary_id == 2,"Loadout not applied")
-	aim_point = craft.position+Vector3(0,0,-100)
-	var before := shots.size()
-	fire(true)
-	assert(shots.size() == before+3 and missile_ammo == 27,"Salvo/ammunition failed")
-	for b in shots: assert(b.damage == 65,"Loadout damage failed")
+	assert(hardpoints.size() >= 1,"Hardpoints did not spawn")
+	for enemy in enemies: enemy.node.queue_free()
+	enemies.clear()
 	var site: Dictionary = hardpoints[0]
-	site.node.position = Vector3(0,80,-50)
+	for i in range(hardpoints.size()-1,-1,-1):
+		if hardpoints[i] != site:
+			hardpoints[i].node.queue_free()
+			hardpoints.remove_at(i)
+	site.node.position = Vector3(400,100,400)
 	site.hp = 30
-	spawn_shot(Vector3(0,80,-30),Vector3.FORWARD,false,false)
-	update_shots(.1)
+	var shot_dir: Vector3 = (site.node.position - Vector3(400,100,360)).normalized()
+	spawn_shot(Vector3(400,100,360),shot_dir,false,false)
+	shots.back().damage = 80
+	update_shots(.2)
 	assert(hardpoints.is_empty() and kills >= 1,"Hardpoint destruction failed")
 	kill_streak = 3
 	streak_timer = 6
@@ -1266,9 +1273,15 @@ func run_smoke_test() -> void:
 	apply_streak_bonus()
 	assert(profile.credits == streak_credits + 25 and missile_ammo == mini(Campaign.SECONDARY[secondary_id].ammo, streak_ammo + 2),"Streak bonus failed")
 	spawn_pickup(craft.position + Vector3(0, 0, 2), "hull")
+	health = minf(health, profile.max_health() - 40)
 	var hull_before: float = health
 	update_pickups(.05)
 	assert(health > hull_before and pickups.is_empty(),"Pickup collection failed")
+	aim_point = craft.position+Vector3(0,0,-100)
+	var before := shots.size()
+	fire(true)
+	assert(shots.size() == before+3 and missile_ammo == 27,"Salvo/ammunition failed")
+	for b in shots: assert(b.damage == 65,"Loadout damage failed")
 	for enemy in enemies: enemy.node.queue_free()
 	enemies.clear()
 	for h in hardpoints: h.node.queue_free()

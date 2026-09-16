@@ -81,7 +81,7 @@ func setup(g) -> void:
 	col.add_child(rank_progress)
 	message = text(col,"Choose your mission and loadout. Progress saves automatically.",16)
 	tabs = TabContainer.new()
-	tabs.custom_minimum_size = Vector2(660,290)
+	tabs.custom_minimum_size = Vector2(660,340)
 	col.add_child(tabs)
 	var mission_col := tab("MISSIONS")
 	mission_brief=text(mission_col,"",16)

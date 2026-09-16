@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bwq08nhavdhva"
-path="res://.godot/imported/snow_normal.png-2c3bb717cd713eaad6f53309bb4ce9c2.ctex"
+uid="uid://ny2a0y26cuhx"
+path="res://.godot/imported/white-ridge.png-f5c4d4f07f099d42f16746c7b005113a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/snow_normal.png"
-dest_files=["res://.godot/imported/snow_normal.png-2c3bb717cd713eaad6f53309bb4ce9c2.ctex"]
+source_file="res://docs/screenshots/white-ridge.png"
+dest_files=["res://.godot/imported/white-ridge.png-f5c4d4f07f099d42f16746c7b005113a.ctex"]
 
 [params]
 
