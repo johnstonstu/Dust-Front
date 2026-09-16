@@ -20,7 +20,7 @@ func setup(g) -> void:
 	label(column,"DUST FRONT",58,Color("ffdaa0"))
 	label(column,"Own the sky. Bring your crew home.",20,Color("d4e1e5"))
 	var p=game.profile
-	label(column,"PILOT %02d  •  %d CREDITS  •  %d / 3 OPERATIONS CLEARED" % [p.rank(),p.credits,p.completed.size()],14,Color("8ca5b0"))
+	label(column,"PILOT %02d  •  %d CREDITS  •  %d / %d OPERATIONS CLEARED" % [p.rank(),p.credits,p.completed.size(),game.Campaign.MISSIONS.size()],14,Color("8ca5b0"))
 	var go=button(column,"DEPLOY  →  "+game.Campaign.MISSIONS[game.mission_index].name,func(): game.start_game())
 	button(column,"HANGAR  /  LOADOUT & UPGRADES",func():
 		hide()

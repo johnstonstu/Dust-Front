@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bwq08nhavdhva"
-path="res://.godot/imported/snow_normal.png-2c3bb717cd713eaad6f53309bb4ce9c2.ctex"
+uid="uid://c1saqgmcga7oq"
+path="res://.godot/imported/in-flight.png-e272fdcd83a9b1498f72d488d9552358.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/snow_normal.png"
-dest_files=["res://.godot/imported/snow_normal.png-2c3bb717cd713eaad6f53309bb4ce9c2.ctex"]
+source_file="res://docs/screenshots/in-flight.png"
+dest_files=["res://.godot/imported/in-flight.png-e272fdcd83a9b1498f72d488d9552358.ctex"]
 
 [params]
 

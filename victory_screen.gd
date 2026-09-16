@@ -78,7 +78,7 @@ func celebrate(index: int,reward: int) -> void:
 	random.seed=900+index
 	for i in range(150):
 		sparks.append({"x":random.randf(),"y":random.randf(),"speed":random.randf_range(.06,.18),"length":random.randf_range(3,13),"phase":random.randf()*TAU})
-	var won_campaign: bool = game.profile.completed.size()==3
+	var won_campaign: bool = game.profile.completed.size()==game.Campaign.MISSIONS.size()
 	if won_campaign: game.mission_index=index
 	heading.text="CAMPAIGN COMPLETE" if won_campaign else "OPERATION COMPLETE"
 	report.text="%s\n\n%d HOSTILES DOWN  •  +%d CREDITS\nPILOT RANK %d  •  %.0f SECONDS\n\nCommand: Mission complete. Return to base for resupply and upgrades." % [game.Campaign.MISSIONS[index].name,game.kills,reward,game.profile.rank(),game.elapsed]

@@ -10,8 +10,10 @@ Dust Front is a third-person Apache combat game built around short sorties, targ
 
 ## Highlights
 
-- Three large theaters: Dust Front, White Ridge, and Ember Coast.
-- Four enemy types with interception, circling, spacing, burst fire, and ace encounters.
+- Four large theaters: Dust Front, White Ridge, Ember Coast, and Night Oasis.
+- Five enemy types with interception, circling, spacing, burst fire, ace encounters, and ground SAM pads.
+- Destroyable hardpoints (radar / fuel sites) required for wave clear alongside air contacts.
+- Combat pickups, kill-streak payoffs, and desert/oasis sandstorm pulses.
 - Three primary cannons, three secondary weapons, missile ammo, upgrades, XP, credits, and mission unlocks.
 - Controller support with automatic detection, remappable feel settings, boost, and countermeasures.
 - Original menu theme, victory cue, radio briefings, radio subtitles, cannon feedback, explosions, radar sweep, and target lead prediction.
@@ -39,11 +41,11 @@ Open `project.godot` in Godot and press **F6** with `main.tscn` open, or **F5** 
 
 Gamepad input activates when you use a connected controller; using the mouse or keyboard switches back. Left stick flies, right stick aims, A/B climbs/descends, RT or RB fires the cannon, LT or LB fires the secondary, X boosts, Y deploys countermeasures, and Start pauses/resumes. Disconnecting the active controller pauses flight. In the hangar, D-pad moves focus, A selects, and shoulder buttons change tabs. Physical controller mappings still need a hands-on check with your particular controller.
 
-Clear waves for a hull repair and secondary-ammunition refill. Each mission has three waves and a final command gunship. Clear a mission to unlock the next theater. Terrain contact damages your helicopter. Each 2.6 × 2.6 km map has a 2.36 × 2.36 km flight boundary and a 380 m absolute altitude ceiling.
+Clear waves for a hull repair and secondary-ammunition refill. Each mission has three waves, ground hardpoints, and a final command gunship. Clear a mission to unlock the next theater. Terrain contact damages your helicopter. Each 2.6 × 2.6 km map has a 2.36 × 2.36 km flight boundary and a 380 m absolute altitude ceiling.
 
 ## Hangar and progression
 
-Clearing an operation opens an animated victory report with drifting sparks, searchlights, and an original victory cue. Clearing all three operations displays Campaign Complete. Choose Keep Flying to enter endless mode in the cleared theater, or return to the hangar. Endless mode also appears on the start menu for pilots with a completed operation. Waves continue beyond three, with an ace every third wave, a 22-enemy cap, and health scaling capped at 2.5×. Resupply and kill rewards continue; campaign-clear bonuses are not repeatedly awarded. R restarts the current mode. Endless runs themselves are not saved between sessions.
+Clearing an operation opens an animated victory report with drifting sparks, searchlights, and an original victory cue. Clearing all four operations displays Campaign Complete. Choose Keep Flying to enter endless mode in the cleared theater, or return to the hangar. Endless mode also appears on the start menu for pilots with a completed operation. Waves continue beyond three, with an ace every third wave, a 22-enemy air cap plus SAM pads, and health scaling capped at 2.5×. Resupply and kill rewards continue; campaign-clear bonuses are not repeatedly awarded. R restarts the current mode. Endless runs themselves are not saved between sessions.
 
 ![Victory report](docs/screenshots/victory.png)
 
@@ -51,8 +53,11 @@ Clearing an operation opens an animated victory report with drifting sparks, sea
 
 The repository excludes Godot's `.godot/` editor cache, local captures, temporary files, and pilot save data. The original source archive and license files are retained under `assets/audio/source/`; see [ASSET_CREDITS.md](ASSET_CREDITS.md) before redistributing a build. The Apache model came from the user's Higgsfield 3D Jutsu project and remains subject to the source service's applicable asset terms.
 
-- **Missions:** Dust Front (desert), White Ridge (snowy ridges and pines), Ember Coast (volcanic terrain and lava).
-- **Enemies:** scouts, fast interceptors, armored gunships, and command aces; 7–15 enemies per wave depending on mission and wave.
+- **Missions:** Dust Front (desert), White Ridge (snowy ridges and pines), Ember Coast (volcanic terrain and lava), Night Oasis (night desert, oasis water, SAM ring).
+- **Enemies:** scouts, fast interceptors, armored gunships, command aces, and ground SAM pads; 7–15+ enemies per wave depending on mission and wave.
+- **Hardpoints:** destroyable radar/fuel sites near the pad; required for wave clear.
+- **Pickups / streaks:** hull and ammo crates from heavy kills; streak bonuses at 3 / 5 / 8.
+- **Weather:** brief sandstorm pulses on Dust Front and Night Oasis (fog + dust).
 - **Loadout:** balanced cannon, rapid cannon (rank 2), heavy cannon (rank 3); guided missiles, unguided three-rocket salvo (rank 2), heavy guided missiles (rank 4).
 - **Upgrades:** three tiers each of armor (+25 hull), engine (+7 m/s), and cannon (+15% damage). Upgrade costs increase by tier.
 - **Progress:** kills grant XP and credits, including on failed sorties. First mission clears grant larger bonuses. Every 250 XP gains a rank, up to rank 10. Progress is saved automatically to Godot's `user://campaign.cfg`, including selected loadout and audio settings. In this installation, the normal location is `~/.local/share/godot/app_userdata/APACHE -- DUST FRONT/campaign.cfg`.

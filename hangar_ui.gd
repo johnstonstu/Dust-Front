@@ -81,18 +81,18 @@ func setup(g) -> void:
 	col.add_child(rank_progress)
 	message = text(col,"Choose your mission and loadout. Progress saves automatically.",16)
 	tabs = TabContainer.new()
-	tabs.custom_minimum_size = Vector2(660,290)
+	tabs.custom_minimum_size = Vector2(660,340)
 	col.add_child(tabs)
 	var mission_col := tab("MISSIONS")
 	mission_brief=text(mission_col,"",16)
-	for i in range(3):
+	for i in range(game.Campaign.MISSIONS.size()):
 		var idx := i
 		var b := button(mission_col,"",func():
 			game.mission_index = idx
 			game.audio.cue("click")
 			refresh())
 		missions.append(b)
-	text(mission_col,"3 sweeps per operation • Defeat the command ace to unlock the next theater.",14)
+	text(mission_col,"3 sweeps per operation • Clear hardpoints and defeat the command ace to unlock the next theater.",14)
 	var loadout := tab("LOADOUT")
 	primary = OptionButton.new()
 	primary.custom_minimum_size.y = 38

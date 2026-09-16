@@ -42,9 +42,9 @@ func _draw() -> void:
 		text_at(Vector2(x-13,55),"%03d" % int(fposmod(bearing+i*15,360)),12,muted)
 	draw_colored_polygon(PackedVector2Array([Vector2(center.x-5,17),Vector2(center.x+5,17),Vector2(center.x,25)]),mint)
 	# Clear, compact objective with a live remaining count.
-	var objective := "%d CONTACTS REMAIN" % game.enemies.size()
-	if game.enemies.is_empty(): objective = "RESUPPLY  /  %.0f s" % maxf(0,4-game.next_wave)
-	text_at(Vector2(center.x-100,83),objective,16,amber)
+	var objective := "%d AIR  /  %d HARDPOINTS" % [game.enemies.size(), game.hardpoints.size()]
+	if game.enemies.is_empty() and game.hardpoints.is_empty(): objective = "RESUPPLY  /  %.0f s" % maxf(0,4-game.next_wave)
+	text_at(Vector2(center.x-110,83),objective,16,amber)
 	var alert := ""
 	if game.craft.position.y-game.ground_height(game.craft.position.x,game.craft.position.z)<10: alert="TERRAIN / CLIMB"
 	elif game.health<game.profile.max_health()*.25: alert="CRITICAL DAMAGE"
@@ -112,6 +112,10 @@ func _draw() -> void:
 			if enemy.node==game.target:
 				bar(p+Vector2(-24,31),48,enemy.hp/enemy.max_hp,amber)
 				text_at(p+Vector2(-35,-33),enemy.kind.to_upper(),12,amber)
+		for site in game.hardpoints:
+			if site.node==game.target:
+				bar(p+Vector2(-24,31),48,site.hp/site.max_hp,amber)
+				text_at(p+Vector2(-40,-33),"HARDPOINT",12,amber)
 		text_at(p+Vector2(-24,52),"%d m" % int(game.craft.position.distance_to(game.target.position)),12,amber)
 		if not game.camera.is_position_behind(game.aim_point):
 			var lead: Vector2 = game.camera.unproject_position(game.aim_point)
