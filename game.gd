@@ -70,10 +70,15 @@ var rocket_timer := 0.0
 var next_wave := 0.0
 var shake := 0.0
 var enemies: Array[Dictionary] = []
+var hardpoints: Array[Dictionary] = []
+var pickups: Array[Dictionary] = []
 var shots: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
 var target: Node3D
 var aim_point := Vector3.ZERO
+var sandstorm_timer := 18.0
+var sandstorm_active := 0.0
+var base_fog_density := 0.00032
 var hud: Label
 var status: Label
 var crosshair: Label
@@ -95,7 +100,7 @@ func _ready() -> void:
 	rng.seed = 8801
 	var args := OS.get_cmdline_user_args()
 	smoke_test = "--smoke-test" in args
-	for key in ["gameplay","menu","pause","alpine","volcanic","effects","title","cannon","victory"]:
+	for key in ["gameplay","menu","pause","alpine","volcanic","oasis","effects","title","cannon","victory"]:
 		if ("--capture-"+key) in args or (key == "gameplay" and "--capture-test" in args):
 			capture_test = true
 			capture_kind = key
@@ -103,13 +108,14 @@ func _ready() -> void:
 		profile.save_path = "user://qa-campaign.cfg"
 	else:
 		profile.load_profile()
-		mission_index=clampi(profile.unlocked-1,0,2)
+		mission_index=clampi(profile.unlocked-1,0,Campaign.MISSIONS.size()-1)
 	if capture_test:
-		profile.unlocked = 3
+		profile.unlocked = Campaign.MISSIONS.size()
 		profile.xp = 1000
 		profile.credits = 850
 		if capture_kind == "alpine": mission_index = 1
 		if capture_kind == "volcanic": mission_index = 2
+		if capture_kind == "oasis": mission_index = 3
 	audio = CombatAudio.new()
 	add_child(audio)
 	audio.setup(profile)
@@ -175,6 +181,12 @@ func build_world() -> void:
 	add_child(arena)
 	arena.build(mission_index)
 	loaded_mission = mission_index
+	sandstorm_timer = 14.0 + mission_index * 2.0
+	sandstorm_active = 0.0
+	for child in arena.get_children():
+		if child is WorldEnvironment and child.environment:
+			base_fog_density = child.environment.fog_density
+			break
 	if enemy_material == null:
 		enemy_material = mat(Color("8d9995"),.55)
 		enemy_material.albedo_texture = load("res://assets/textures/metal_color.png")
@@ -339,6 +351,7 @@ func start_game(mode: String = "campaign") -> void:
 	hit_flash = 0
 	damage_flash = 0
 	reward_timer = 0
+	sandstorm_active = 0.0
 	primary_id = profile.primary
 	secondary_id = profile.secondary
 	missile_ammo = Campaign.SECONDARY[secondary_id].ammo
@@ -357,7 +370,8 @@ func start_game(mode: String = "campaign") -> void:
 	var briefings: Array[String] = [
 		"Command: Dust Front actual. Sweep the dune corridor and eliminate all hostiles. Stay above the terrain.",
 		"Command: White Ridge actual. Interceptors are above the snow line. Keep your altitude and clear the patrol route.",
-		"Command: Ember Coast actual. The armored ace is in the blockade. Break the escort, then bring the ace down."
+		"Command: Ember Coast actual. The armored ace is in the blockade. Break the escort, then bring the ace down.",
+		"Command: Night Oasis actual. Black out the SAM ring, seize the waterpad, and clear the garrison."
 	]
 	var briefing: String = briefings[mission_index]
 	radio_message(briefing, "OBJECTIVE  //  CLEAR WAVE 1 OF 3")
@@ -366,12 +380,12 @@ func start_game(mode: String = "campaign") -> void:
 func radio_message(message_text: String, objective_text: String = "") -> void:
 	var key := "radio_wave"
 	if objective_text.find("WAVE 1")>=0:
-		key=["radio_briefing","radio_alpine","radio_volcanic"][mission_index]
+		key=["radio_briefing","radio_alpine","radio_volcanic","radio_briefing"][mission_index]
 		if mission_index==0: message_text="Command: Dust Front actual. Sweep the corridor and eliminate all hostiles. Stay above the terrain."
 	elif objective_text.find("OBJECTIVE COMPLETE")>=0:
 		key="radio_complete"
 	else:
-		message_text="Wave inbound. Keep the turret on the lead contact and watch your missile count."
+		message_text="Wave inbound. Clear air contacts and hardpoints. Watch SAM pads and missile count."
 	radio_label.text = "RADIO  //  COMMAND\n\"" + message_text + "\""
 	radio_label.visible = true
 	radio_timer = maxf(4,audio.speak(key)+.4)
@@ -380,7 +394,7 @@ func radio_message(message_text: String, objective_text: String = "") -> void:
 func clear_combat() -> void:
 	if is_instance_valid(gun_flash): gun_flash.hide()
 	if is_instance_valid(gun_light): gun_light.light_energy=0
-	for array in [enemies,shots,effects]:
+	for array in [enemies,hardpoints,pickups,shots,effects]:
 		for item in array:
 			if is_instance_valid(item.node): item.node.queue_free()
 		array.clear()
@@ -472,14 +486,69 @@ func spawn_wave() -> void:
 		if wave%3 == 0 and i == 0: kind = "ace"
 		spawn_enemy(pos,kind)
 		if wave==1: enemies.back().cooldown+=7
+	if wave >= 2 or mission_index >= 2:
+		var sam_count := 1 + (1 if mission_index >= 3 or wave >= 3 else 0)
+		for s in range(sam_count):
+			var angle := PI * .2 + s * 1.1 + wave * .35
+			var pos := Vector3(cos(angle)*140,0,sin(angle)*140+40)
+			pos.y = ground_height(pos.x,pos.z)+2.5
+			spawn_enemy(pos,"sam")
+	spawn_hardpoints()
 	missile_ammo = Campaign.SECONDARY[secondary_id].ammo
 	audio.cue("reward")
+
+func spawn_hardpoints() -> void:
+	for item in hardpoints:
+		if is_instance_valid(item.node): item.node.queue_free()
+	hardpoints.clear()
+	if not is_instance_valid(arena): return
+	var sites: Array[Vector3] = arena.hardpoint_sites(wave)
+	for i in range(sites.size()):
+		var ground: Vector3 = sites[i]
+		var node := Node3D.new()
+		add_child(node)
+		node.position = Vector3(ground.x, ground.y + 4.5, ground.z)
+		var base := CylinderMesh.new()
+		base.top_radius = 2.4
+		base.bottom_radius = 3.2
+		base.height = 3.5
+		shape(node, base, enemy_material)
+		var dish := SphereMesh.new()
+		dish.radius = 2.1
+		dish.height = 2.4
+		shape(node, dish, mat(Color("6a7a72"), .4), Vector3(0, 3.2, 0))
+		var lamp := OmniLight3D.new()
+		lamp.light_color = Color("ff7a4a")
+		lamp.light_energy = 1.6
+		lamp.omni_range = 18
+		lamp.position = Vector3(0, 5.2, 0)
+		node.add_child(lamp)
+		var hp := 160.0 + wave * 35.0 + mission_index * 20.0
+		hardpoints.append({"node": node, "kind": "hardpoint", "hp": hp, "max_hp": hp, "radius": 5.5, "hit_time": 0.0})
 
 func spawn_enemy(pos: Vector3, kind: String = "scout") -> void:
 	var enemy := Node3D.new()
 	add_child(enemy)
 	enemy.position = pos
 	var spinners: Array[Node3D] = []
+	if kind == "sam":
+		var pedestal := CylinderMesh.new()
+		pedestal.top_radius = 1.4
+		pedestal.bottom_radius = 2.2
+		pedestal.height = 4.0
+		shape(enemy, pedestal, enemy_material)
+		var turret_box := box(enemy, Vector3(2.4, 1.2, 2.4), Color("4d5652"), Vector3(0, 2.6, 0))
+		spinners.append(turret_box)
+		for side in [-1.0, 1.0]:
+			box(enemy, Vector3(.45, .45, 3.4), Color("2f3431"), Vector3(side * .7, 3.1, -1.2))
+		var lens := SphereMesh.new()
+		lens.radius = .28
+		lens.height = .56
+		shape(enemy, lens, mat(Color("ff5034"), 0, 3), Vector3(0, 3.4, -1.6))
+		var hp_sam: float = 180.0 * (1 + mission_index * .15)
+		if run_mode == "endless": hp_sam *= minf(2.5, 1 + (wave - 1) * .08)
+		enemies.append({"node": enemy, "kind": kind, "hp": hp_sam, "max_hp": hp_sam, "radius": 4.0, "cooldown": rng.randf_range(2.5, 4.5), "phase": rng.randf() * TAU, "spinners": spinners, "velocity": Vector3.ZERO, "grounded": true})
+		return
 	var hull := SphereMesh.new()
 	hull.radius = 1.5
 	hull.height = 1.7
@@ -515,7 +584,7 @@ func spawn_enemy(pos: Vector3, kind: String = "scout") -> void:
 		shape(enemy,lens,mat(Color("ff5034"),0,3),Vector3(side*.7,.1,-1.4))
 	var hp: float = {"scout":70.0,"interceptor":95.0,"gunship":240.0,"ace":640.0}[kind] * (1+mission_index*.18)
 	if run_mode=="endless": hp*=minf(2.5,1+(wave-1)*.08)
-	enemies.append({"node":enemy,"kind":kind,"hp":hp,"max_hp":hp,"radius":5.5 if kind == "ace" else 4.2 if kind == "gunship" else 3.0,"cooldown":rng.randf_range(3,6),"phase":rng.randf()*TAU,"spinners":spinners,"velocity":Vector3.ZERO})
+	enemies.append({"node":enemy,"kind":kind,"hp":hp,"max_hp":hp,"radius":5.5 if kind == "ace" else 4.2 if kind == "gunship" else 3.0,"cooldown":rng.randf_range(3,6),"phase":rng.randf()*TAU,"spinners":spinners,"velocity":Vector3.ZERO,"grounded":false})
 
 func _physics_process(delta: float) -> void:
 	if capture_test and screenshot_done: return
@@ -602,11 +671,12 @@ func update_game(delta: float) -> void:
 	var agl := craft.position.y-ground_height(craft.position.x,craft.position.z)
 	if dust_timer<=0 and agl<22:
 		dust_timer=.09
-		var dust_color: Color = [Color("b9a27b"),Color("d9e7ed"),Color("82726b")][mission_index]
+		var dust_color: Color = [Color("b9a27b"),Color("d9e7ed"),Color("82726b"),Color("6d7a8c")][mission_index]
 		var offset := Vector3(rng.randf_range(-7,7),0,rng.randf_range(-7,7))
 		var position_on_ground := craft.position+offset
 		position_on_ground.y=ground_height(position_on_ground.x,position_on_ground.z)+.6
 		puff(position_on_ground,offset.normalized()*7+Vector3.UP,1.0,dust_color,1.3)
+	update_sandstorm(delta)
 	update_camera(delta)
 	find_target()
 	if turret != null and turret.global_position.distance_to(aim_point) > 1:
@@ -626,8 +696,10 @@ func update_game(delta: float) -> void:
 	gun_light.light_energy=2.5 if cannon_flash>0 else 0
 	update_enemies(delta)
 	update_shots(delta)
+	update_pickups(delta)
+	update_hardpoint_flash(delta)
 	update_effects(delta)
-	if enemies.is_empty():
+	if enemies.is_empty() and hardpoints.is_empty():
 		next_wave += delta
 		if next_wave > 4.0:
 			next_wave = 0
@@ -637,11 +709,69 @@ func update_game(delta: float) -> void:
 				wave += 1
 				health = minf(profile.max_health(), health + 25)
 				spawn_wave()
-				radio_message("Wave %d inbound. Keep the turret on the lead contact and watch your missile count." % wave, "OBJECTIVE  //  CLEAR WAVE %d OF 3" % wave)
+				radio_message("Wave %d inbound. Clear air contacts and hardpoints." % wave, "OBJECTIVE  //  CLEAR WAVE %d OF 3" % wave)
 	warning_timer = maxf(0,warning_timer-delta)
 	if health < profile.max_health()*.25 and warning_timer <= 0:
 		warning_timer = 3.0
 		audio.cue("warning")
+
+func update_sandstorm(delta: float) -> void:
+	if mission_index not in [0, 3]:
+		sandstorm_active = 0.0
+		return
+	if sandstorm_active > 0:
+		sandstorm_active = maxf(0, sandstorm_active - delta)
+		if sandstorm_active <= 0:
+			_set_fog_density(base_fog_density)
+		elif int(sandstorm_active * 8) % 2 == 0:
+			var dust := Color("b9a27b") if mission_index == 0 else Color("6d7a8c")
+			puff(craft.position + Vector3(rng.randf_range(-40, 40), rng.randf_range(2, 18), rng.randf_range(-40, 40)), Vector3(rng.randf_range(-12, 12), 1, rng.randf_range(-12, 12)), 1.4, dust, 1.6)
+	else:
+		sandstorm_timer -= delta
+		if sandstorm_timer <= 0:
+			sandstorm_timer = rng.randf_range(22, 36)
+			sandstorm_active = rng.randf_range(6, 10)
+			_set_fog_density(base_fog_density * 3.4)
+			reward_text = "SANDSTORM  /  VISIBILITY DROP"
+			reward_timer = 2.2
+			audio.cue("warning")
+
+func _set_fog_density(value: float) -> void:
+	if not is_instance_valid(arena): return
+	for child in arena.get_children():
+		if child is WorldEnvironment and child.environment:
+			child.environment.fog_density = value
+			return
+
+func update_hardpoint_flash(delta: float) -> void:
+	for h in hardpoints:
+		if h.get("hit_time", 0.0) > 0:
+			h.hit_time = maxf(0, h.hit_time - delta)
+			if h.hit_time <= 0:
+				for mesh in h.node.find_children("*", "MeshInstance3D", true, false):
+					mesh.material_overlay = null
+
+func update_pickups(delta: float) -> void:
+	for i in range(pickups.size() - 1, -1, -1):
+		var p := pickups[i]
+		p.life -= delta
+		p.node.rotate_y(delta * 2.4)
+		p.node.position.y = ground_height(p.node.position.x, p.node.position.z) + 3.0 + sin(elapsed * 3 + p.phase) * .4
+		if craft.position.distance_to(p.node.position) < 8.0:
+			if p.kind == "hull":
+				health = minf(profile.max_health(), health + 28)
+				reward_text = "HULL PATCH  /  +28"
+			else:
+				missile_ammo = mini(Campaign.SECONDARY[secondary_id].ammo, missile_ammo + 6)
+				reward_text = "AMMO CRATE  /  +6"
+			reward_timer = 2.0
+			audio.cue("reward")
+			p.node.queue_free()
+			pickups.remove_at(i)
+			continue
+		if p.life <= 0:
+			p.node.queue_free()
+			pickups.remove_at(i)
 
 func update_camera(delta: float) -> void:
 	var offset := craft.basis * Vector3(0, 8 + pitch * 8, 22)
@@ -667,6 +797,12 @@ func find_target() -> void:
 		if dot > best and craft.position.distance_to(e.node.position) < 550:
 			best = dot
 			target = e.node
+	for h in hardpoints:
+		var direction: Vector3 = (h.node.position - camera.position).normalized()
+		var dot := ray.dot(direction)
+		if dot > best and craft.position.distance_to(h.node.position) < 550:
+			best = dot
+			target = h.node
 	if is_instance_valid(target):
 		aim_point = target.position
 		for enemy in enemies:
@@ -726,8 +862,28 @@ func update_enemies(delta: float) -> void:
 		var toward: Vector3 = craft.position-node.position
 		var distance := toward.length()
 		var direction := toward.normalized()
+		if e.get("grounded", false) or e.kind == "sam":
+			node.position.y = ground_height(node.position.x, node.position.z) + 2.5
+			e.velocity = Vector3.ZERO
+			if distance > .1:
+				var flat := Vector3(toward.x, 0, toward.z)
+				if flat.length() > .1:
+					var desired_basis := Basis.looking_at(flat.normalized())
+					node.quaternion = node.quaternion.slerp(desired_basis.get_rotation_quaternion(), minf(delta * 2.5, 1))
+			for spinner in e.spinners:
+				spinner.rotate_y(delta * 1.8)
+			e.cooldown -= delta
+			if e.cooldown <= 0 and distance < 420:
+				e.cooldown = rng.randf_range(2.2, 3.6)
+				var predicted := craft.position + velocity * minf(distance / 90, .8)
+				var aim := (predicted - node.position).normalized()
+				spawn_shot(node.position + Vector3.UP * 3.2, aim, true, true)
+				shots.back().damage = 16.0
+				shots.back().velocity = aim * 85.0
+				play_sound("heavy", node.position, -14)
+			continue
 		var tangent := direction.cross(Vector3.UP).normalized()
-		var speed: float = {"scout":20.0,"interceptor":45.0,"gunship":13.0,"ace":18.0}[e.kind]
+		var speed: float = {"scout":20.0,"interceptor":45.0,"gunship":13.0,"ace":18.0}.get(e.kind, 20.0)
 		var desired := direction*(1.0 if distance > 120 else -.25)+tangent*.8
 		var orbit_sign := 1.0 if sin(e.phase)>0 else -1.0
 		desired = direction*(1.0 if distance>170 else -.3)+tangent*orbit_sign
@@ -804,10 +960,21 @@ func update_shots(delta: float) -> void:
 					for e in enemies:
 						if e != victim and e.node.position.distance_to(impact) < b.splash:
 							victims.append(e)
+					for h in hardpoints:
+						if h.node.position.distance_to(impact) < b.splash:
+							damage_hardpoint(h, b.damage * .65)
 				for e in victims:
 					damage_enemy(e,b.damage if e == victim else b.damage*.65)
 				burst(impact,1.7 if b.rocket else .7)
 				hit = true
+			else:
+				for h in hardpoints:
+					if segment_distance(previous, node.position, h.node.position) < h.radius:
+						projectile_hits += 1
+						damage_hardpoint(h, b.damage)
+						burst(h.node.position, 1.4 if b.rocket else .8)
+						hit = true
+						break
 		if b.rocket:
 			b.trail += delta
 			if b.trail > .045:
@@ -819,6 +986,66 @@ func update_shots(delta: float) -> void:
 		if hit or b.ttl <= 0:
 			node.queue_free()
 			shots.remove_at(i)
+
+func damage_hardpoint(site: Dictionary, damage: float) -> void:
+	if site not in hardpoints: return
+	hit_flash = .22
+	impact_timer = .45
+	impact_position = site.node.position
+	impact_damage = damage
+	audio.confirm_hit()
+	for mesh in site.node.find_children("*", "MeshInstance3D", true, false):
+		mesh.material_overlay = hit_overlay
+	site["hit_time"] = .09
+	site.hp -= damage
+	if site.hp <= 0:
+		var pos: Vector3 = site.node.position
+		burst(pos, 5)
+		play_sound("heavy_explosion", pos, -2)
+		site.node.queue_free()
+		hardpoints.erase(site)
+		kills += 1
+		kill_streak += 1
+		streak_timer = 6
+		var old_xp: int = profile.xp
+		var old_credits: int = profile.credits
+		profile.earn_kill("hardpoint")
+		reward_text = "HARDPOINT  /  +%d XP  +%d CR" % [profile.xp - old_xp, profile.credits - old_credits]
+		reward_timer = 2.5
+		apply_streak_bonus()
+
+func spawn_pickup(pos: Vector3, kind: String) -> void:
+	var node := Node3D.new()
+	add_child(node)
+	node.position = pos
+	var crate := BoxMesh.new()
+	crate.size = Vector3(1.6, 1.2, 1.6)
+	var color := Color("6fd0a0") if kind == "hull" else Color("efbb7c")
+	shape(node, crate, mat(color, .2, 1.2))
+	pickups.append({"node": node, "kind": kind, "life": 22.0, "phase": rng.randf() * TAU})
+
+func apply_streak_bonus() -> void:
+	if kill_streak == 3:
+		profile.credits += 25
+		missile_ammo = mini(Campaign.SECONDARY[secondary_id].ammo, missile_ammo + 2)
+		reward_text = "STREAK 3  /  +25 CR  +2 AMMO"
+		reward_timer = 2.8
+		audio.cue("reward")
+		profile.save_profile()
+	elif kill_streak == 5:
+		health = minf(profile.max_health(), health + 20)
+		profile.credits += 45
+		reward_text = "STREAK 5  /  +20 HULL  +45 CR"
+		reward_timer = 2.8
+		audio.cue("reward")
+		profile.save_profile()
+	elif kill_streak == 8:
+		missile_ammo = Campaign.SECONDARY[secondary_id].ammo
+		profile.credits += 80
+		reward_text = "STREAK 8  /  FULL RELOAD  +80 CR"
+		reward_timer = 3.0
+		audio.cue("reward")
+		profile.save_profile()
 
 func damage_enemy(enemy: Dictionary, damage: float) -> void:
 	if enemy not in enemies: return
@@ -833,7 +1060,11 @@ func damage_enemy(enemy: Dictionary, damage: float) -> void:
 	if enemy.hp <= 0:
 		var pos: Vector3 = enemy.node.position
 		burst(pos,6 if enemy.kind == "ace" else 4)
-		play_sound("heavy_explosion" if enemy.kind in ["gunship","ace"] else "explosion",pos,-3)
+		play_sound("heavy_explosion" if enemy.kind in ["gunship","ace","sam"] else "explosion",pos,-3)
+		if enemy.kind in ["gunship", "ace"] and rng.randf() < .55:
+			spawn_pickup(pos, "hull" if rng.randf() < .5 else "ammo")
+		elif enemy.kind == "sam" and rng.randf() < .35:
+			spawn_pickup(pos, "ammo")
 		enemy.node.queue_free()
 		enemies.erase(enemy)
 		kills += 1
@@ -847,6 +1078,7 @@ func damage_enemy(enemy: Dictionary, damage: float) -> void:
 		if kill_streak>1: reward_text="%d CHAIN  /  " % kill_streak+reward_text
 		reward_timer=2.5
 		if profile.rank() > old_rank: audio.cue("reward")
+		apply_streak_bonus()
 
 func puff(pos: Vector3, drift: Vector3, size: float, color: Color, life: float) -> void:
 	if effects.size() > 220:
@@ -923,7 +1155,7 @@ func finish_mission() -> void:
 	var note := "%s cleared / %d kills / +%d credits. Choose your next sortie below." % [Campaign.MISSIONS[mission_index].name,kills,reward]
 	note += "\nCOMMAND: Mission complete. Return to base for resupply and upgrades."
 	var cleared_index := mission_index
-	mission_index = mini(mission_index+1,2)
+	mission_index = mini(mission_index+1,Campaign.MISSIONS.size()-1)
 	hangar.hide()
 	victory_screen.celebrate(cleared_index,reward)
 	audio.celebrate()
@@ -939,8 +1171,8 @@ func update_hud() -> void:
 	var viewport_size := get_viewport().get_visible_rect().size
 	crosshair.position = viewport_size/2-Vector2(9,19)
 	hud.text = "HULL %03d / %03d   WAVE %d/3   KILLS %02d\nSPEED %03d km/h   AGL %03d m   RANK %d\nPRIMARY  %s\nSECONDARY %02d  %s  %s\n%s" % [int(health),int(profile.max_health()),wave,kills,int(velocity.length()*3.6),int(craft.position.y-ground_height(craft.position.x,craft.position.z)),profile.rank(),Campaign.PRIMARY[primary_id].name,missile_ammo,"READY" if rocket_timer <= 0 else "%.1fs" % rocket_timer,Campaign.SECONDARY[secondary_id].name,Campaign.MISSIONS[loaded_mission].name]
-	status.text = "%d HOSTILES / %s" % [enemies.size(),"TARGET LOCK" if is_instance_valid(target) else "SEARCHING"]
-	if active and enemies.is_empty(): status.text = "OPERATION CLEAR" if wave == 3 else "RESUPPLY / NEXT WAVE IN %d" % maxi(1,int(5-next_wave))
+	status.text = "%d HOSTILES / %d HARDPOINTS / %s" % [enemies.size(),hardpoints.size(),"TARGET LOCK" if is_instance_valid(target) else "SEARCHING"]
+	if active and enemies.is_empty() and hardpoints.is_empty(): status.text = "OPERATION CLEAR" if wave == 3 else "RESUPPLY / NEXT WAVE IN %d" % maxi(1,int(5-next_wave))
 	if active and craft.position.y-ground_height(craft.position.x,craft.position.z) < 10: status.text += " / TERRAIN — CLIMB"
 	if abs(craft.position.x)>1120 or abs(craft.position.z)>1120: status.text += " / ARENA BOUNDARY"
 	if not profile.last_error.is_empty(): status.text = profile.last_error
@@ -989,6 +1221,7 @@ func run_smoke_test() -> void:
 	start_game()
 	assert(rotor != null and tail_rotor != null and turret != null)
 	assert(enemies.size() == 7,"Expanded wave did not spawn")
+	assert(hardpoints.size() >= 1,"Hardpoints did not spawn")
 	var e := enemies[0]
 	e.node.position = Vector3(0,80,-60)
 	e.hp = 20
@@ -1020,11 +1253,30 @@ func run_smoke_test() -> void:
 	fire(true)
 	assert(shots.size() == before+3 and missile_ammo == 27,"Salvo/ammunition failed")
 	for b in shots: assert(b.damage == 65,"Loadout damage failed")
+	var site: Dictionary = hardpoints[0]
+	site.node.position = Vector3(0,80,-50)
+	site.hp = 30
+	spawn_shot(Vector3(0,80,-30),Vector3.FORWARD,false,false)
+	update_shots(.1)
+	assert(hardpoints.is_empty() and kills >= 1,"Hardpoint destruction failed")
+	kill_streak = 3
+	streak_timer = 6
+	var streak_credits: int = profile.credits
+	var streak_ammo: int = missile_ammo
+	apply_streak_bonus()
+	assert(profile.credits == streak_credits + 25 and missile_ammo == mini(Campaign.SECONDARY[secondary_id].ammo, streak_ammo + 2),"Streak bonus failed")
+	spawn_pickup(craft.position + Vector3(0, 0, 2), "hull")
+	var hull_before: float = health
+	update_pickups(.05)
+	assert(health > hull_before and pickups.is_empty(),"Pickup collection failed")
 	for enemy in enemies: enemy.node.queue_free()
 	enemies.clear()
+	for h in hardpoints: h.node.queue_free()
+	hardpoints.clear()
 	next_wave = 4.0
 	update_game(1.0/60)
-	assert(wave == 2 and enemies.size() == 9 and missile_ammo == 30,"Wave/resupply failed")
+	assert(wave == 2 and enemies.size() >= 9 and missile_ammo == 30,"Wave/resupply failed")
+	assert(enemies.any(func(item): return item.kind == "sam"),"SAM pads did not spawn on wave 2")
 	set_pause(true)
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -1034,6 +1286,8 @@ func run_smoke_test() -> void:
 	wave = 3
 	for enemy in enemies: enemy.node.queue_free()
 	enemies.clear()
+	for h in hardpoints: h.node.queue_free()
+	hardpoints.clear()
 	next_wave = 4.0
 	update_game(1.0/60)
 	assert(not active and profile.unlocked == 2 and 0 in profile.completed,"Mission unlock failed")
@@ -1045,12 +1299,16 @@ func run_smoke_test() -> void:
 	restored.save_path = profile.save_path
 	restored.load_profile()
 	assert(restored.xp == profile.xp and restored.credits == profile.credits and restored.armor == 1 and restored.secondary == 1,"Save/load failed")
-	for index in [1,2]:
-		profile.unlocked = 3
+	for index in [1,2,3]:
+		profile.unlocked = Campaign.MISSIONS.size()
 		mission_index = index
 		start_game()
-		assert(arena.biome == index and enemies.size() == 7+index*2)
+		assert(arena.biome == index)
+		assert(enemies.size() >= 5 + wave * 2 + index * 2)
+		if index >= 2:
+			assert(enemies.any(func(item): return item.kind == "sam"),"Expected SAM on later theaters")
 		for i in range(60): update_game(1.0/60)
+	assert(sandstorm_timer < 40,"Sandstorm timer missing on oasis")
 	set_pause(true)
 	return_to_hangar()
 	assert(not active and not paused and hangar.visible,"Hangar transition failed")
@@ -1073,6 +1331,8 @@ func run_smoke_test() -> void:
 	update_hud()
 	for key in ["radio_briefing","radio_wave","radio_alpine","radio_volcanic","radio_complete"]:
 		assert(audio.streams.has(key) and audio.streams[key]!=null,"Missing radio recording: "+key)
+	mission_index=2
+	start_game()
 	assert(audio.radio.stream==audio.streams.radio_volcanic,"Wrong briefing for volcanic mission")
 	set_pause(true)
 	assert(audio.radio.stream_paused,"Radio does not pause with gameplay")
@@ -1090,11 +1350,12 @@ func run_smoke_test() -> void:
 	clear_combat()
 	wave=90
 	spawn_wave()
-	assert(enemies.size()==22 and enemies[0].kind=="ace","Endless cap/ace cadence failed")
+	assert(enemies.size()>=22,"Endless air cap failed")
+	assert(enemies.any(func(item): return item.kind=="ace"),"Endless ace cadence failed")
 	start_game()
 	assert(run_mode=="campaign" and wave==1,"Campaign did not reset after endless")
 	DirAccess.remove_absolute(profile.save_path)
-	print("SMOKE PASS: combat, homing, salvo/ammo, rewards, upgrade gating, loadouts, centered pause, resupply, mission unlock, save/load, all biomes, defeat and restart")
+	print("SMOKE PASS: combat, hardpoints, SAM, pickups, streaks, sandstorm, homing, salvo/ammo, rewards, upgrade gating, loadouts, centered pause, resupply, mission unlock, save/load, all biomes, defeat and restart")
 	await quit_game()
 
 func audio_test() -> void:

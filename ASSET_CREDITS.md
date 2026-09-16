@@ -32,4 +32,5 @@
 
 - Lock, warning, reward, and menu cues were synthesized for this game.
 - Sand, rock, snow, ash, and metal albedo/normal/roughness textures were generated procedurally for this game. `tools/prepare_assets.py` reproduces these maps and audio edits from the retained inputs.
+- Night Oasis water, SAM pads, hardpoints, and pickups are procedural meshes/materials authored in GDScript (no external image packs).
 - Helicopter source: user-requested Higgsfield 3D Jutsu project `9f7e8324-73ed-45d1-8757-75747407a3b6`, revision 3. The helicopter remains subject to the source service's applicable asset terms.

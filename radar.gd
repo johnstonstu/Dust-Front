@@ -20,5 +20,11 @@ func _draw() -> void:
 	for e in game.enemies:
 		var offset: Vector3 = game.craft.global_basis.inverse()*(e.node.position-game.craft.position)
 		var p := (Vector2(offset.x,offset.z)/5).limit_length(72)
-		draw_circle(center+p,4 if e.kind in ["ace","gunship"] else 2.6,Color("ff735a"))
+		var tint := Color("ff9a3a") if e.kind == "sam" else Color("ff735a")
+		draw_circle(center+p,4 if e.kind in ["ace","gunship","sam"] else 2.6,tint)
 		if e.node==game.target: draw_arc(center+p,7,0,TAU,20,Color("ffd28c"),1,true)
+	for h in game.hardpoints:
+		var offset: Vector3 = game.craft.global_basis.inverse()*(h.node.position-game.craft.position)
+		var p := (Vector2(offset.x,offset.z)/5).limit_length(72)
+		draw_rect(Rect2(center+p-Vector2(3,3),Vector2(6,6)),Color("efbb7c"))
+		if h.node==game.target: draw_arc(center+p,8,0,TAU,20,Color("ffd28c"),1,true)

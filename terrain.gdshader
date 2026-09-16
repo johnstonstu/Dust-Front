@@ -16,6 +16,7 @@ void fragment(){
  if(biome==1){rock_mix=max(rock_mix,(1.0-smoothstep(-6.0,12.0,world.y))*.4);}
  ALBEDO=mix(near_col*(.65+macro*.6),stone,rock_mix);
  if(biome==1){ALBEDO*=.68;}
+ if(biome==3){ALBEDO*=vec3(.55,.62,.78);}
  NORMAL_MAP=texture(ground_normal,uv).rgb;
  NORMAL_MAP_DEPTH=.65;
  ROUGHNESS=texture(ground_rough,uv).r;

@@ -1,9 +1,10 @@
 extends RefCounted
 
 const MISSIONS = [
-	{"name": "01 / DUST FRONT", "biome": "desert", "brief": "Sweep the dune corridor. Defeat three waves and the command gunship.", "reward": 350},
-	{"name": "02 / WHITE RIDGE", "biome": "alpine", "brief": "Climb through frozen ridges. Interceptors patrol above the snow line.", "reward": 550},
-	{"name": "03 / EMBER COAST", "biome": "volcanic", "brief": "Break the volcanic blockade. Destroy the armored ace and its escort.", "reward": 800}
+	{"name": "01 / DUST FRONT", "biome": "desert", "brief": "Sweep the dune corridor. Defeat three waves, clear hardpoints, and the command gunship.", "reward": 350},
+	{"name": "02 / WHITE RIDGE", "biome": "alpine", "brief": "Climb through frozen ridges. Interceptors patrol above the snow line. Silence the ridge radars.", "reward": 550},
+	{"name": "03 / EMBER COAST", "biome": "volcanic", "brief": "Break the volcanic blockade. Destroy fuel dumps, SAM pads, and the armored ace.", "reward": 800},
+	{"name": "04 / NIGHT OASIS", "biome": "oasis", "brief": "Night raid on the oasis garrison. Black out the SAM ring and seize the waterpad.", "reward": 1100}
 ]
 const PRIMARY = [
 	{"name": "M230 / Balanced cannon", "rank": 1, "damage": 25.0, "interval": 0.11, "description": "Reliable all-round fire. 25 damage / 9 rounds per second."},
@@ -13,7 +14,7 @@ const PRIMARY = [
 const SECONDARY = [
 	{"name": "SEEKER / Guided missile", "rank": 1, "damage": 110.0, "cooldown": 1.4, "ammo": 20, "description": "One homing missile. Best against fast single targets."},
 	{"name": "HYDRA / Rocket salvo", "rank": 2, "damage": 65.0, "cooldown": 1.8, "ammo": 30, "description": "Three unguided rockets with splash damage. Uses 3 ammo."},
-	{"name": "HELLFIRE / Heavy missile", "rank": 4, "damage": 250.0, "cooldown": 2.8, "ammo": 12, "description": "Heavy homing warhead with splash damage. Ideal for gunships."}
+	{"name": "HELLFIRE / Heavy missile", "rank": 4, "damage": 250.0, "cooldown": 2.8, "ammo": 12, "description": "Heavy homing warhead with splash damage. Ideal for gunships and hardpoints."}
 ]
 var xp := 0
 var credits := 0
@@ -33,6 +34,9 @@ var sensitivity := 1.0
 var camera_shake := 0.7
 var save_path := "user://campaign.cfg"
 var last_error := ""
+
+func mission_count() -> int:
+	return MISSIONS.size()
 
 func rank() -> int:
 	return mini(10, 1 + xp / 250)
@@ -58,7 +62,7 @@ func buy(kind: String) -> bool:
 	return true
 
 func earn_kill(kind: String) -> void:
-	var rewards := {"scout": [35, 30], "interceptor": [55, 45], "gunship": [95, 80], "ace": [180, 150]}
+	var rewards := {"scout": [35, 30], "interceptor": [55, 45], "gunship": [95, 80], "ace": [180, 150], "sam": [70, 60], "hardpoint": [45, 40]}
 	var reward: Array = rewards.get(kind, [35, 30])
 	xp += reward[0]
 	credits += reward[1]
@@ -71,7 +75,7 @@ func complete_mission(index: int) -> int:
 	xp += 150 if first_clear else 50
 	if first_clear:
 		completed.append(index)
-	unlocked = maxi(unlocked, mini(3, index + 2))
+	unlocked = maxi(unlocked, mini(mission_count(), index + 2))
 	save_profile()
 	return reward
 
@@ -95,7 +99,7 @@ func load_profile() -> void:
 			set(key, maxi(0, int(value)))
 	xp = mini(xp, 10000000)
 	credits = mini(credits, 10000000)
-	unlocked = clampi(unlocked, 1, 3)
+	unlocked = clampi(unlocked, 1, mission_count())
 	for key in ["armor", "engine", "cannon"]:
 		set(key, clampi(int(get(key)), 0, 3))
 	primary = clampi(primary, 0, PRIMARY.size() - 1)
@@ -108,7 +112,7 @@ func load_profile() -> void:
 	completed.clear()
 	if cleared is Array:
 		for index in cleared:
-			if index is int and index >= 0 and index < 3 and index not in completed:
+			if index is int and index >= 0 and index < mission_count() and index not in completed:
 				completed.append(index)
 	for key in ["master", "effects", "rotor", "music"]:
 		var value = file.get_value("pilot", key, get(key))
