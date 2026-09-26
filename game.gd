@@ -146,15 +146,21 @@ func _ready() -> void:
 		hangar.hide()
 		start_menu.show()
 
-func mat(color: Color, metal: float = 0.0, emission: float = 0.0) -> StandardMaterial3D:
+func mat(color: Color, metal: float = 0.0, emission: float = 0.0, rough: float = 0.65) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.metallic = metal
-	m.roughness = 0.65
+	m.roughness = rough
 	if emission > 0:
 		m.emission_enabled = true
 		m.emission = color
 		m.emission_energy_multiplier = emission
+	return m
+
+func unlit(color: Color, emission: float = 2.0) -> StandardMaterial3D:
+	var m := mat(color, 0.0, emission, 0.35)
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	return m
 
 func shape(parent: Node3D, mesh: Mesh, material: Material, pos: Vector3 = Vector3.ZERO) -> MeshInstance3D:
@@ -188,10 +194,11 @@ func build_world() -> void:
 			base_fog_density = child.environment.fog_density
 			break
 	if enemy_material == null:
-		enemy_material = mat(Color("8d9995"),.55)
+		enemy_material = mat(Color("7a8680"), .62, 0.0, .55)
 		enemy_material.albedo_texture = load("res://assets/textures/metal_color.png")
 		enemy_material.normal_enabled = true
 		enemy_material.normal_texture = load("res://assets/textures/metal_normal.png")
+		enemy_material.uv1_scale = Vector3(0.12, 0.12, 0.12)
 		enemy_material.uv1_triplanar = true
 
 func find_part(node: Node, prefix: String) -> Node3D:
@@ -225,20 +232,21 @@ func build_player() -> void:
 	craft.position = Vector3(0, ground_height(0,40)+42, 40)
 	update_camera(1.0)
 	var flash_mesh := SphereMesh.new()
-	flash_mesh.radius=.5
-	flash_mesh.height=1
-	gun_flash=shape(self,flash_mesh,mat(Color("ffe4a3"),0,4))
-	gun_flash.material_override.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
-	gun_flash.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	flash_mesh.radius = .42
+	flash_mesh.height = .84
+	flash_mesh.radial_segments = 10
+	flash_mesh.rings = 6
+	gun_flash = shape(self, flash_mesh, unlit(Color("ffe4a3", .95), 6.0))
+	gun_flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	gun_flash.hide()
-	gun_light=OmniLight3D.new()
-	gun_light.omni_range=12
-	gun_light.light_color=Color("ffd794")
-	gun_light.light_energy=0
+	gun_light = OmniLight3D.new()
+	gun_light.omni_range = 18
+	gun_light.light_color = Color("ffc878")
+	gun_light.light_energy = 0
 	add_child(gun_light)
-	hit_overlay=mat(Color(1,.8,.35,.65),0,2)
-	hit_overlay.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-	hit_overlay.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	hit_overlay = mat(Color(1, .82, .28, .7), 0, 2.5, .4)
+	hit_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	hit_overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 
 func label_at(parent: Node, pos: Vector2, size: int, color: Color) -> Label:
 	var l := Label.new()
@@ -513,41 +521,69 @@ func spawn_hardpoints() -> void:
 		base.bottom_radius = 3.2
 		base.height = 3.5
 		shape(node, base, enemy_material)
+		# Hazard stripe band for ground-target readability.
+		var band := CylinderMesh.new()
+		band.top_radius = 2.55
+		band.bottom_radius = 2.55
+		band.height = 0.55
+		shape(node, band, mat(Color("ef9a3a"), .15, 1.4, .4), Vector3(0, 0.4, 0))
 		var dish := SphereMesh.new()
 		dish.radius = 2.1
 		dish.height = 2.4
-		shape(node, dish, mat(Color("6a7a72"), .4), Vector3(0, 3.2, 0))
+		var dish_mat := mat(Color("6a7a72"), .45, 0.0, .4)
+		dish_mat.albedo_texture = load("res://assets/textures/metal_color.png")
+		dish_mat.uv1_triplanar = true
+		shape(node, dish, dish_mat, Vector3(0, 3.2, 0))
+		var ring := TorusMesh.new()
+		ring.inner_radius = 3.4
+		ring.outer_radius = 3.7
+		shape(node, ring, unlit(Color("ff9a4a", .75), 2.2), Vector3(0, 0.2, 0))
 		var lamp := OmniLight3D.new()
 		lamp.light_color = Color("ff7a4a")
-		lamp.light_energy = 1.6
-		lamp.omni_range = 18
+		lamp.light_energy = 2.4
+		lamp.omni_range = 26
 		lamp.position = Vector3(0, 5.2, 0)
 		node.add_child(lamp)
 		var hp := 160.0 + wave * 35.0 + mission_index * 20.0
-		hardpoints.append({"node": node, "kind": "hardpoint", "hp": hp, "max_hp": hp, "radius": 5.5, "hit_time": 0.0})
+		hardpoints.append({"node": node, "kind": "hardpoint", "hp": hp, "max_hp": hp, "radius": 5.5, "hit_time": 0.0, "beacon": lamp})
 
 func spawn_enemy(pos: Vector3, kind: String = "scout") -> void:
 	var enemy := Node3D.new()
 	add_child(enemy)
 	enemy.position = pos
 	var spinners: Array[Node3D] = []
+	var accent := Color("c45a3a")
+	match kind:
+		"interceptor": accent = Color("d4a24a")
+		"gunship": accent = Color("b85a6a")
+		"ace": accent = Color("ef5a3a")
+		"sam": accent = Color("ff5034")
 	if kind == "sam":
 		var pedestal := CylinderMesh.new()
 		pedestal.top_radius = 1.4
 		pedestal.bottom_radius = 2.2
 		pedestal.height = 4.0
 		shape(enemy, pedestal, enemy_material)
+		box(enemy, Vector3(2.6, 0.35, 2.6), Color("2a2018"), Vector3(0, 0.15, 0))
+		var hazard := box(enemy, Vector3(2.5, 0.2, 2.5), Color("ef9a3a"), Vector3(0, 1.1, 0))
+		hazard.material_override = mat(Color("ef9a3a"), .1, 1.2, .4)
 		var turret_box := box(enemy, Vector3(2.4, 1.2, 2.4), Color("4d5652"), Vector3(0, 2.6, 0))
 		spinners.append(turret_box)
 		for side in [-1.0, 1.0]:
 			box(enemy, Vector3(.45, .45, 3.4), Color("2f3431"), Vector3(side * .7, 3.1, -1.2))
 		var lens := SphereMesh.new()
-		lens.radius = .28
-		lens.height = .56
-		shape(enemy, lens, mat(Color("ff5034"), 0, 3), Vector3(0, 3.4, -1.6))
+		lens.radius = .32
+		lens.height = .64
+		shape(enemy, lens, mat(Color("ff5034"), 0, 4.5), Vector3(0, 3.4, -1.6))
+		var beacon := OmniLight3D.new()
+		beacon.light_color = Color("ff5034")
+		beacon.light_energy = 2.8
+		beacon.omni_range = 22
+		beacon.position = Vector3(0, 4.8, 0)
+		enemy.add_child(beacon)
 		var hp_sam: float = 180.0 * (1 + mission_index * .15)
 		if run_mode == "endless": hp_sam *= minf(2.5, 1 + (wave - 1) * .08)
-		enemies.append({"node": enemy, "kind": kind, "hp": hp_sam, "max_hp": hp_sam, "radius": 4.0, "cooldown": rng.randf_range(2.5, 4.5), "phase": rng.randf() * TAU, "spinners": spinners, "velocity": Vector3.ZERO, "grounded": true})
+		enemies.append({"node": enemy, "kind": kind, "hp": hp_sam, "max_hp": hp_sam, "radius": 4.0, "cooldown": rng.randf_range(2.5, 4.5), "phase": rng.randf() * TAU, "spinners": spinners, "velocity": Vector3.ZERO, "grounded": true, "beacon": beacon})
 		return
 	var hull := SphereMesh.new()
 	hull.radius = 1.5
@@ -563,8 +599,10 @@ func spawn_enemy(pos: Vector3, kind: String = "scout") -> void:
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arr)
 		shape(enemy,mesh,enemy_material)
 		box(enemy,Vector3(.2,2,2),Color("aa7650"),Vector3(0,1,2))
+		box(enemy, Vector3(0.18, 0.12, 3.2), accent, Vector3(0, 0.35, -0.4)).material_override = mat(accent, .2, 1.8, .35)
 	else:
 		box(enemy,Vector3(6,.22,1),Color("57646a"),Vector3.ZERO)
+		box(enemy, Vector3(5.2, 0.08, 0.35), accent, Vector3(0, 0.2, 0)).material_override = mat(accent, .15, 1.6, .4)
 		for side in [-1,1]:
 			var ring := TorusMesh.new()
 			ring.inner_radius = .7
@@ -576,12 +614,14 @@ func spawn_enemy(pos: Vector3, kind: String = "scout") -> void:
 			box(enemy,Vector3(2.2,1.6,5),Color("60635b"),Vector3(0,0,.6))
 			for side in [-1,1]:
 				box(enemy,Vector3(.45,.45,4),Color("342f30"),Vector3(side*1.6,-.5,-1))
+			# Nose chevron glow for heavy contacts.
+			box(enemy, Vector3(1.4, 0.12, 0.35), accent, Vector3(0, 0.95, -2.2)).material_override = mat(accent, .1, 2.2, .3)
 			enemy.scale = Vector3.ONE*(1.9 if kind == "ace" else 1.4)
 	for side in [-1,1]:
 		var lens := SphereMesh.new()
 		lens.radius = .23
 		lens.height = .46
-		shape(enemy,lens,mat(Color("ff5034"),0,3),Vector3(side*.7,.1,-1.4))
+		shape(enemy,lens,mat(Color("ff5034"),0,3.8),Vector3(side*.7,.1,-1.4))
 	var hp: float = {"scout":70.0,"interceptor":95.0,"gunship":240.0,"ace":640.0}[kind] * (1+mission_index*.18)
 	if run_mode=="endless": hp*=minf(2.5,1+(wave-1)*.08)
 	enemies.append({"node":enemy,"kind":kind,"hp":hp,"max_hp":hp,"radius":5.5 if kind == "ace" else 4.2 if kind == "gunship" else 3.0,"cooldown":rng.randf_range(3,6),"phase":rng.randf()*TAU,"spinners":spinners,"velocity":Vector3.ZERO,"grounded":false})
@@ -671,11 +711,14 @@ func update_game(delta: float) -> void:
 	var agl := craft.position.y-ground_height(craft.position.x,craft.position.z)
 	if dust_timer<=0 and agl<22:
 		dust_timer=.09
-		var dust_color: Color = [Color("b9a27b"),Color("d9e7ed"),Color("82726b"),Color("6d7a8c")][mission_index]
+		var dust_color: Color = [Color("cbb892"),Color("d9e7ed"),Color("8a7468"),Color("6d7a8c")][mission_index]
 		var offset := Vector3(rng.randf_range(-7,7),0,rng.randf_range(-7,7))
 		var position_on_ground := craft.position+offset
 		position_on_ground.y=ground_height(position_on_ground.x,position_on_ground.z)+.6
-		puff(position_on_ground,offset.normalized()*7+Vector3.UP,1.0,dust_color,1.3)
+		puff(position_on_ground,offset.normalized()*7+Vector3.UP*.8,1.15,dust_color,1.45)
+		# Extra sheet of fine grit under rotor wash.
+		if agl < 14:
+			puff(position_on_ground+Vector3(rng.randf_range(-3,3),0,rng.randf_range(-3,3)), Vector3(rng.randf_range(-4,4),.4,rng.randf_range(-4,4)), .55, dust_color.lightened(.1), .9)
 	update_sandstorm(delta)
 	update_camera(delta)
 	find_target()
@@ -693,7 +736,8 @@ func update_game(delta: float) -> void:
 	if muzzle != null:
 		muzzle.visible = false
 	gun_flash.visible=cannon_flash>0
-	gun_light.light_energy=2.5 if cannon_flash>0 else 0
+	gun_light.light_energy=lerpf(gun_light.light_energy, 3.5 if cannon_flash>0 else 0.0, 1.0 - exp(-delta * 18.0))
+	_pulse_beacons()
 	update_enemies(delta)
 	update_shots(delta)
 	update_pickups(delta)
@@ -723,15 +767,18 @@ func update_sandstorm(delta: float) -> void:
 		sandstorm_active = maxf(0, sandstorm_active - delta)
 		if sandstorm_active <= 0:
 			_set_fog_density(base_fog_density)
+			_set_fog_tint(null)
 		elif int(sandstorm_active * 8) % 2 == 0:
-			var dust := Color("b9a27b") if mission_index == 0 else Color("6d7a8c")
-			puff(craft.position + Vector3(rng.randf_range(-40, 40), rng.randf_range(2, 18), rng.randf_range(-40, 40)), Vector3(rng.randf_range(-12, 12), 1, rng.randf_range(-12, 12)), 1.4, dust, 1.6)
+			var dust := Color("c4a878") if mission_index == 0 else Color("5d6e82")
+			puff(craft.position + Vector3(rng.randf_range(-40, 40), rng.randf_range(2, 18), rng.randf_range(-40, 40)), Vector3(rng.randf_range(-14, 14), 1.2, rng.randf_range(-14, 14)), 1.7, dust, 1.8)
+			puff(craft.position + Vector3(rng.randf_range(-55, 55), rng.randf_range(1, 10), rng.randf_range(-55, 55)), Vector3(rng.randf_range(-18, 18), .4, rng.randf_range(-18, 18)), 2.2, dust.darkened(.15), 2.1)
 	else:
 		sandstorm_timer -= delta
 		if sandstorm_timer <= 0:
 			sandstorm_timer = rng.randf_range(22, 36)
 			sandstorm_active = rng.randf_range(6, 10)
-			_set_fog_density(base_fog_density * 3.4)
+			_set_fog_density(base_fog_density * 3.8)
+			_set_fog_tint(Color("c9b07e") if mission_index == 0 else Color("2a3a4e"))
 			reward_text = "SANDSTORM  /  VISIBILITY DROP"
 			reward_timer = 2.2
 			audio.cue("warning")
@@ -742,6 +789,26 @@ func _set_fog_density(value: float) -> void:
 		if child is WorldEnvironment and child.environment:
 			child.environment.fog_density = value
 			return
+
+func _set_fog_tint(color) -> void:
+	if not is_instance_valid(arena): return
+	for child in arena.get_children():
+		if child is WorldEnvironment and child.environment:
+			if color == null:
+				child.environment.fog_light_energy = 1.15 if mission_index == 0 else (0.85 if mission_index == 3 else 1.0)
+			else:
+				child.environment.fog_light_color = color
+				child.environment.fog_light_energy = 1.55
+			return
+
+func _pulse_beacons() -> void:
+	var pulse := 1.4 + sin(elapsed * 6.0) * 0.9
+	for h in hardpoints:
+		if h.has("beacon") and is_instance_valid(h.beacon):
+			h.beacon.light_energy = pulse * 1.6
+	for e in enemies:
+		if e.kind == "sam" and e.has("beacon") and is_instance_valid(e.beacon):
+			e.beacon.light_energy = 1.6 + absf(sin(elapsed * 8.0 + e.phase)) * 2.4
 
 func update_hardpoint_flash(delta: float) -> void:
 	for h in hardpoints:
@@ -837,18 +904,24 @@ func fire(rocket: bool) -> void:
 		cannon_flash=.045
 		gun_flash.position=origin+direction*2.4
 		gun_flash.look_at(origin+direction*20)
-		gun_flash.scale=Vector3(.8,.8,3.2 if primary_id==2 else 2.3)
+		gun_flash.scale=Vector3(1.1,1.1,3.8 if primary_id==2 else 2.8)
 		gun_flash.show()
 		gun_light.position=origin
-		gun_light.light_energy=2.5
+		gun_light.light_energy=4.2 if primary_id==2 else 3.2
+		# Hot spark flecks for muzzle pop.
+		for i in range(3):
+			var spark_dir := (direction + Vector3(rng.randf_range(-.2,.2), rng.randf_range(-.15,.2), rng.randf_range(-.2,.2))).normalized()
+			puff(origin+direction*1.6, spark_dir*rng.randf_range(8,16), .12, Color("ffe6a0"), .18)
 		visual.rotation.x-=.012 if primary_id!=2 else .025
 		shake = .12
 
 func spawn_shot(origin: Vector3, direction: Vector3, hostile: bool, rocket: bool, homing: Node3D = null) -> void:
 	var tracer := BoxMesh.new()
-	tracer.size = Vector3(.24,.24,5.5) if not rocket and not hostile else Vector3(.13,.13,2.4) if hostile else Vector3(.32,.32,1.8)
-	var color := Color("ff573f") if hostile else Color("ffd58b")
-	var node := shape(self, tracer, mat(color, 0, 4), origin)
+	tracer.size = Vector3(.2,.2,6.2) if not rocket and not hostile else Vector3(.13,.13,2.4) if hostile else Vector3(.36,.36,2.1)
+	var color := Color("ff573f") if hostile else (Color("ffb060") if rocket else Color("ffe29a"))
+	var node := shape(self, tracer, mat(color, 0, 5.5 if not hostile else 3.5, 0.3), origin)
+	node.material_override.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if direction.length() > 0.1:
 		node.look_at(origin + direction)
 	shots.append({"node": node, "velocity": direction * (95.0 if hostile else (120.0 if rocket else 280.0)), "ttl": 5.0, "hostile": hostile, "rocket": rocket, "target": homing, "trail": 0.0, "damage": 9.0 if hostile else 110.0 if rocket else 25.0, "splash": 3.0 if rocket else 0.0})
@@ -980,7 +1053,8 @@ func update_shots(delta: float) -> void:
 			b.trail += delta
 			if b.trail > .045:
 				b.trail = 0
-				puff(previous,Vector3.UP,.32,Color("aaa393"),.65)
+				puff(previous, Vector3.UP * .5 + b.velocity.normalized() * -2.0, .38, Color("ffb878") if not b.hostile else Color("ff6a4a"), .55)
+				puff(previous, Vector3(rng.randf_range(-1,1), .2, rng.randf_range(-1,1)), .55, Color("5a524c"), .9)
 		if node.position.y < ground_height(node.position.x,node.position.z):
 			hit = true
 			burst(node.position,1.5 if b.rocket else .4)
@@ -1082,26 +1156,27 @@ func damage_enemy(enemy: Dictionary, damage: float) -> void:
 		apply_streak_bonus()
 
 func puff(pos: Vector3, drift: Vector3, size: float, color: Color, life: float) -> void:
-	if effects.size() > 220:
+	if effects.size() > 240:
 		return
 	var sphere := SphereMesh.new()
 	sphere.radius = size
 	sphere.height = size * 2
 	sphere.radial_segments = 8
 	sphere.rings = 4
-	var node := shape(self, sphere, mat(color, 0, 1.0 if color.r > 0.9 else 0.0), pos)
+	var emit := 1.4 if color.r > 0.85 and color.g > 0.45 else (0.35 if color.a > 0.9 else 0.0)
+	var node := shape(self, sphere, mat(color, 0, emit, 0.9), pos)
 	node.material_override.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
 	node.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	effects.append({"node": node, "velocity": drift, "life": life, "total": life})
 
 func burst(pos: Vector3, power: float) -> void:
+	# Hot white core.
+	puff(pos, Vector3.UP * 2.0, power * 0.35, Color("fff1c8"), 0.28)
 	if power>=3 and effects.size()<210:
 		var ring := TorusMesh.new()
 		ring.inner_radius=.9
-		ring.outer_radius=1.0
-		var shock_material := mat(Color("ffdc9a"),0,2)
-		shock_material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-		shock_material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+		ring.outer_radius=1.15
+		var shock_material := unlit(Color("ffdc9a", .9), 3.0)
 		var shock := shape(self,ring,shock_material,pos)
 		if shock.global_position.distance_squared_to(camera.global_position)>.01:
 			shock.look_at(camera.global_position)
@@ -1109,19 +1184,38 @@ func burst(pos: Vector3, power: float) -> void:
 		shock.scale=Vector3.ONE*power
 		shock.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		effects.append({"node":shock,"velocity":Vector3.ZERO,"life":.55,"total":.55,"shock":true})
-	for i in range(10):
-		var v := Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.5, 1), rng.randf_range(-1, 1)) * power * 4
-		puff(pos, v, power * rng.randf_range(0.12, 0.3), Color("ff9a35") if i < 5 else Color("514b46"), rng.randf_range(0.3, 0.9))
+	for i in range(14):
+		var v := Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.35, 1.15), rng.randf_range(-1, 1)) * power * 4.2
+		var hot := i < 6
+		var smoke := i >= 10
+		var col := Color("ffb24a") if hot else (Color("3a3532") if smoke else Color("ff7a28"))
+		var sz := power * rng.randf_range(0.18 if hot else 0.28, 0.32 if hot else 0.55)
+		puff(pos, v, sz, col, rng.randf_range(0.35 if hot else 0.7, 0.7 if hot else 1.35))
+	# Brief flash light at blast center.
+	var blast := OmniLight3D.new()
+	blast.light_color = Color("ffb060")
+	blast.light_energy = 5.5 * minf(power, 6.0) / 4.0
+	blast.omni_range = 18 + power * 3
+	blast.position = pos
+	add_child(blast)
+	effects.append({"node": blast, "velocity": Vector3.ZERO, "life": 0.28, "total": 0.28, "light": true})
 
 func update_effects(delta: float) -> void:
 	for i in range(effects.size() - 1, -1, -1):
 		var e := effects[i]
 		e.life -= delta
+		if e.get("light", false):
+			if e.node is OmniLight3D:
+				e.node.light_energy = maxf(0, e.life / e.total * 6.0)
+			if e.life <= 0:
+				e.node.queue_free()
+				effects.remove_at(i)
+			continue
 		e.node.position += e.velocity * delta
 		e.node.scale *= 1 + delta * (5 if e.get("shock",false) else 1.2)
 		var material: StandardMaterial3D = e.node.material_override
 		material.albedo_color.a=clampf(e.life/e.total,0,1)
-		if material.emission_enabled: material.emission_energy_multiplier=maxf(0,e.life/e.total)
+		if material.emission_enabled: material.emission_energy_multiplier=maxf(0,e.life/e.total*2.2)
 		if e.life <= 0:
 			e.node.queue_free()
 			effects.remove_at(i)
