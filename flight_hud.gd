@@ -27,12 +27,30 @@ func _draw() -> void:
 	var w := size.x
 	var h := size.y
 	var center := size/2
+	# Soft ops frame — keeps the mint/amber language without clutter.
+	draw_rect(Rect2(0, 0, w, 3), Color(mint.r, mint.g, mint.b, 0.18))
+	draw_rect(Rect2(0, h - 3, w, 3), Color(mint.r, mint.g, mint.b, 0.12))
+	if game.sandstorm_active > 0:
+		var storm_a := clampf(game.sandstorm_active / 8.0, 0.0, 1.0) * 0.22
+		var storm := Color(0.72, 0.58, 0.32, storm_a) if game.mission_index == 0 else Color(0.18, 0.24, 0.34, storm_a)
+		draw_rect(Rect2(0, 0, w, 48), storm)
+		draw_rect(Rect2(0, h - 56, w, 56), storm)
+		draw_rect(Rect2(0, 0, 36, h), storm)
+		draw_rect(Rect2(w - 36, 0, 36, h), storm)
 	card(Rect2(24,24,260,78))
 	text_at(Vector2(40,49),game.Campaign.MISSIONS[game.loaded_mission].name,17,mint)
 	text_at(Vector2(40,75),("ENDLESS / WAVE %d" if game.run_mode=="endless" else "SWEEP %d / 3") % game.wave,14,muted)
 	for i in range(3):
 		draw_circle(Vector2(210+i*22,71),5,mint if i < game.wave else muted.darkened(.6))
 	text_at(Vector2(w-170,205),"TACTICAL / 380 m",12,muted)
+	# Kill-streak strip — visual payoff for the ops fantasy.
+	if game.kill_streak > 0 and game.streak_timer > 0:
+		var streak_w := 168.0
+		card(Rect2(24, 112, streak_w, 36))
+		text_at(Vector2(40, 135), "STREAK  %d" % game.kill_streak, 15, amber)
+		for i in range(8):
+			var lit := i < game.kill_streak
+			draw_rect(Rect2(118 + i * 8, 128, 6, 10), amber if lit else muted.darkened(0.55))
 	# Heading tape stays above the flight path.
 	var bearing := fposmod(-rad_to_deg(game.heading),360)
 	card(Rect2(center.x-182,10,364,83))
@@ -104,10 +122,25 @@ func _draw() -> void:
 	if not game.reward_text.is_empty() and game.reward_timer>0:
 		var reward_width := font.get_string_size(game.reward_text,HORIZONTAL_ALIGNMENT_LEFT,-1,14).x
 		text_at(Vector2(center.x-reward_width/2,center.y+92),game.reward_text,14,amber)
+	# Soft hardpoint diamonds so ground objectives stay readable in desert haze.
+	for site in game.hardpoints:
+		if game.camera.is_position_behind(site.node.position): continue
+		var hp: Vector2 = game.camera.unproject_position(site.node.position)
+		if hp.x < -40 or hp.y < -40 or hp.x > w + 40 or hp.y > h + 40: continue
+		var diamond := PackedVector2Array([hp+Vector2(0,-10),hp+Vector2(8,0),hp+Vector2(0,10),hp+Vector2(-8,0)])
+		draw_colored_polygon(diamond, Color(amber.r, amber.g, amber.b, 0.22))
+		draw_polyline(PackedVector2Array([diamond[0],diamond[1],diamond[2],diamond[3],diamond[0]]), amber, 1.2, true)
+		if site.node != game.target:
+			text_at(hp+Vector2(10,-4), "HP", 10, amber)
 	# Bracket locked targets. An edge arrow points toward the nearest contact.
 	if is_instance_valid(game.target) and not game.camera.is_position_behind(game.target.position):
 		var p: Vector2 = game.camera.unproject_position(game.target.position)
+		var is_hp := false
+		for site in game.hardpoints:
+			if site.node == game.target: is_hp = true
 		draw_rect(Rect2(p-Vector2(24,24),Vector2(48,48)),amber,false,1.5)
+		if is_hp:
+			draw_arc(p, 30, 0, TAU, 28, Color(amber.r, amber.g, amber.b, 0.55), 1.2, true)
 		for enemy in game.enemies:
 			if enemy.node==game.target:
 				bar(p+Vector2(-24,31),48,enemy.hp/enemy.max_hp,amber)
@@ -121,18 +154,31 @@ func _draw() -> void:
 			var lead: Vector2 = game.camera.unproject_position(game.aim_point)
 			draw_arc(lead,6,0,TAU,24,mint,1.5,true)
 			draw_line(p,lead,Color(.6,.9,.8,.35),1,true)
-	elif not game.enemies.is_empty():
-		var nearest: Node3D = game.enemies[0].node
+	elif not game.enemies.is_empty() or not game.hardpoints.is_empty():
+		var nearest: Node3D = null
+		var nearest_label := "CONTACT"
+		var best_d := INF
 		for enemy in game.enemies:
-			if enemy.node.position.distance_squared_to(game.craft.position)<nearest.position.distance_squared_to(game.craft.position): nearest=enemy.node
-		var local: Vector3 = game.camera.global_basis.inverse()*(nearest.position-game.camera.position)
-		var direction := Vector2(local.x,-local.y)
-		if local.z>0: direction.y=absf(direction.y)+200
-		if direction.length()<1: direction=Vector2.UP
-		direction=direction.normalized()
-		var p := center+direction*minf(w*.28,h*.29)
-		draw_colored_polygon(PackedVector2Array([p+direction*10,p-direction*7+direction.orthogonal()*6,p-direction*7-direction.orthogonal()*6]),amber)
-		text_at(p+Vector2(14,5),"CONTACT",11,amber)
+			var d: float = enemy.node.position.distance_squared_to(game.craft.position)
+			if d < best_d:
+				best_d = d
+				nearest = enemy.node
+				nearest_label = "CONTACT"
+		for site in game.hardpoints:
+			var d: float = site.node.position.distance_squared_to(game.craft.position)
+			if d < best_d:
+				best_d = d
+				nearest = site.node
+				nearest_label = "HARDPOINT"
+		if nearest != null:
+			var local: Vector3 = game.camera.global_basis.inverse()*(nearest.position-game.camera.position)
+			var direction := Vector2(local.x,-local.y)
+			if local.z>0: direction.y=absf(direction.y)+200
+			if direction.length()<1: direction=Vector2.UP
+			direction=direction.normalized()
+			var p := center+direction*minf(w*.28,h*.29)
+			draw_colored_polygon(PackedVector2Array([p+direction*10,p-direction*7+direction.orthogonal()*6,p-direction*7-direction.orthogonal()*6]),amber)
+			text_at(p+Vector2(14,5),nearest_label,11,amber)
 	var hint := "LS fly  RS aim  A/B altitude  RT/RB cannon  LT/LB missile  X boost  Y countermeasures  Start pause" if game.using_pad else "WASD fly  Mouse aim  Space/C altitude  Clicks fire  Shift boost  Q countermeasures  Esc pause"
 	text_at(Vector2(28,h-16),hint,12,muted)
 	text_at(Vector2(center.x-92,h-58),"COUNTERMEASURES  " + ("READY" if game.flare_cooldown<=0 else "%.0f s" % game.flare_cooldown),12,mint)

@@ -26,5 +26,8 @@ func _draw() -> void:
 	for h in game.hardpoints:
 		var offset: Vector3 = game.craft.global_basis.inverse()*(h.node.position-game.craft.position)
 		var p := (Vector2(offset.x,offset.z)/5).limit_length(72)
-		draw_rect(Rect2(center+p-Vector2(3,3),Vector2(6,6)),Color("efbb7c"))
-		if h.node==game.target: draw_arc(center+p,8,0,TAU,20,Color("ffd28c"),1,true)
+		var hp := center + p
+		# Diamond blip — distinct from air contacts.
+		draw_colored_polygon(PackedVector2Array([hp+Vector2(0,-5),hp+Vector2(5,0),hp+Vector2(0,5),hp+Vector2(-5,0)]), Color("efbb7c"))
+		draw_arc(hp, 7, 0, TAU, 16, Color("efbb7c", 0.35), 1, true)
+		if h.node==game.target: draw_arc(hp,9,0,TAU,20,Color("ffd28c"),1.4,true)
