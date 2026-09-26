@@ -49,7 +49,7 @@ func _draw() -> void:
 		card(Rect2(24, 112, streak_w, 36))
 		text_at(Vector2(40, 135), "STREAK  %d" % game.kill_streak, 15, amber)
 		for i in range(8):
-			var lit := i < game.kill_streak
+			var lit: bool = i < game.kill_streak
 			draw_rect(Rect2(118 + i * 8, 128, 6, 10), amber if lit else muted.darkened(0.55))
 	# Heading tape stays above the flight path.
 	var bearing := fposmod(-rad_to_deg(game.heading),360)
@@ -125,13 +125,13 @@ func _draw() -> void:
 	# Soft hardpoint diamonds so ground objectives stay readable in desert haze.
 	for site in game.hardpoints:
 		if game.camera.is_position_behind(site.node.position): continue
-		var hp: Vector2 = game.camera.unproject_position(site.node.position)
-		if hp.x < -40 or hp.y < -40 or hp.x > w + 40 or hp.y > h + 40: continue
-		var diamond := PackedVector2Array([hp+Vector2(0,-10),hp+Vector2(8,0),hp+Vector2(0,10),hp+Vector2(-8,0)])
+		var marker: Vector2 = game.camera.unproject_position(site.node.position)
+		if marker.x < -40 or marker.y < -40 or marker.x > w + 40 or marker.y > h + 40: continue
+		var diamond := PackedVector2Array([marker+Vector2(0,-10),marker+Vector2(8,0),marker+Vector2(0,10),marker+Vector2(-8,0)])
 		draw_colored_polygon(diamond, Color(amber.r, amber.g, amber.b, 0.22))
 		draw_polyline(PackedVector2Array([diamond[0],diamond[1],diamond[2],diamond[3],diamond[0]]), amber, 1.2, true)
 		if site.node != game.target:
-			text_at(hp+Vector2(10,-4), "HP", 10, amber)
+			text_at(marker+Vector2(10,-4), "HP", 10, amber)
 	# Bracket locked targets. An edge arrow points toward the nearest contact.
 	if is_instance_valid(game.target) and not game.camera.is_position_behind(game.target.position):
 		var p: Vector2 = game.camera.unproject_position(game.target.position)
